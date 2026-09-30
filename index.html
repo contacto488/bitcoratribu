@@ -3723,22 +3723,27 @@ window.onerror = function(msg, src, line, col, err) {
       });
       var coloresRoles = getRoleColors(cfg);
 
+      // Guarda la lista de tareas al instante (estado local + Firebase). Evita que un cambio se pierda o se revierta.
+      function guardarTareas(nuevaLista) {
+        setListaTareas(nuevaLista);
+        if (onCambiarConfig) onCambiarConfig(Object.assign({}, cfg, {tareas: nuevaLista}));
+      }
+
       // ── funciones base ──
       function cambiarRolTarea(code, rol) {
-        setListaTareas(function(lista) {
-          return lista.map(function(t) {
-            if (t.code !== code) return t;
-            var rolesActuales = Array.isArray(t.roles) ? t.roles : [];
-            var nuevosRoles = rolesActuales.indexOf(rol) >= 0
-              ? rolesActuales.filter(function(r) { return r !== rol; })
-              : rolesActuales.concat([rol]);
-            return Object.assign({}, t, {roles: nuevosRoles});
-          });
+        var nuevaLista = listaTareas.map(function(t) {
+          if (t.code !== code) return t;
+          var rolesActuales = Array.isArray(t.roles) ? t.roles : [];
+          var nuevosRoles = rolesActuales.indexOf(rol) >= 0
+            ? rolesActuales.filter(function(r) { return r !== rol; })
+            : rolesActuales.concat([rol]);
+          return Object.assign({}, t, {roles: nuevosRoles});
         });
+        guardarTareas(nuevaLista);
       }
 
       function eliminarTarea(code) {
-        setListaTareas(function(lista) { return lista.filter(function(t) { return t.code !== code; }); });
+        guardarTareas(listaTareas.filter(function(t) { return t.code !== code; }));
       }
 
       function empezarEdicion(t) {
@@ -3748,11 +3753,9 @@ window.onerror = function(msg, src, line, col, err) {
 
       function confirmarEdicion(code) {
         if (!textoEdicion.trim()) return;
-        setListaTareas(function(lista) {
-          return lista.map(function(t) {
-            return t.code === code ? Object.assign({}, t, {nombre: textoEdicion.trim()}) : t;
-          });
-        });
+        guardarTareas(listaTareas.map(function(t) {
+          return t.code === code ? Object.assign({}, t, {nombre: textoEdicion.trim()}) : t;
+        }));
         setEditandoCode(null);
       }
       // Activa/edita/quita el campo de valor de una tarea (se guarda solo)
@@ -3786,7 +3789,7 @@ window.onerror = function(msg, src, line, col, err) {
           return;
         }
         // Prefijo conocido → agregar la tarea directamente
-        setListaTareas(function(lista) { return lista.concat([{code: code, nombre: nombre, roles: []}]); });
+        guardarTareas(listaTareas.concat([{code: code, nombre: nombre, roles: []}]));
         setNuevaTarea({code:"", nombre:"", roles:[]});
       }
 
@@ -3816,12 +3819,11 @@ window.onerror = function(msg, src, line, col, err) {
           colors: PALETAS_GRUPOS[colorIdx],
           roles: []
         };
-        var nuevosGrupos = gruposActuales.concat([grupoNuevo]);
-        // Guardar el grupo nuevo
-        onGuardarConfig(Object.assign({}, cfg, {gruposCustom: nuevosGrupos}));
-        // Agregar la tarea pendiente
+        // Guardar el grupo nuevo Y la tarea pendiente en una sola operación (para no pisarse)
         var tp = dialogoNuevoGrupo.tareaPendiente;
-        setListaTareas(function(lista) { return lista.concat([{code: tp.code, nombre: tp.nombre, roles: []}]); });
+        var nuevaLista = listaTareas.concat([{code: tp.code, nombre: tp.nombre, roles: []}]);
+        setListaTareas(nuevaLista);
+        onGuardarConfig(Object.assign({}, cfg, {gruposCustom: nuevosGrupos, tareas: nuevaLista}));
         setNuevaTarea({code:"", nombre:"", roles:[]});
         setDialogoNuevoGrupo(null);
       }
@@ -3852,18 +3854,16 @@ window.onerror = function(msg, src, line, col, err) {
         return [];
       }
       function setSubtareasTarea(code, nuevas) {
-        setListaTareas(function(lista){
-          return lista.map(function(t){
-            if (t.code !== code) return t;
-            // Si la lista queda vacía, eliminar la propiedad subtareas para limpieza
-            if (!nuevas || nuevas.length === 0) {
-              var copia = Object.assign({}, t);
-              delete copia.subtareas;
-              return copia;
-            }
-            return Object.assign({}, t, {subtareas: nuevas});
-          });
+        var nuevaLista = listaTareas.map(function(t){
+          if (t.code !== code) return t;
+          if (!nuevas || nuevas.length === 0) {
+            var copia = Object.assign({}, t);
+            delete copia.subtareas;
+            return copia;
+          }
+          return Object.assign({}, t, {subtareas: nuevas});
         });
+        guardarTareas(nuevaLista);
       }
       function agregarSubPaso(code) {
         var texto = (nuevoSubPaso || "").trim();
@@ -4042,10 +4042,13 @@ window.onerror = function(msg, src, line, col, err) {
                             <span style={{fontSize:12}}>⏰</span>
                             <input type="time" value={t.hora||""} onChange={function(e){
                               var val=e.target.value;
-                              var nuevaLista = listaTareas.map(function(x){return x.code===t.code?Object.assign({},x,{hora:val||undefined}):x;});
-                              setListaTareas(nuevaLista);
-                              if (onCambiarConfig) onCambiarConfig(Object.assign({},cfg,{tareas:nuevaLista}));
+                              var nuevaLista = listaTareas.map(function(x){ if(x.code!==t.code) return x; var c=Object.assign({},x); if(val) c.hora=val; else delete c.hora; return c; });
+                              guardarTareas(nuevaLista);
                             }} style={{padding:"3px 5px",borderRadius:6,border:"1.5px solid "+(t.hora?"#fcd34d":"#e2e8f0"),fontSize:11,color:"#1e293b",background:t.hora?"#fffbeb":"#fff",fontFamily:"inherit",width:92}}/>
+                            {t.hora && <button onClick={function(){
+                              var nuevaLista = listaTareas.map(function(x){ if(x.code!==t.code) return x; var c=Object.assign({},x); delete c.hora; return c; });
+                              guardarTareas(nuevaLista);
+                            }} title="Quitar la hora (desprogramar)" style={{padding:"2px 6px",borderRadius:6,border:"1.5px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✕</button>}
                           </div>
                         )}
                         <div style={{display:"flex", gap:4}}>
@@ -6023,6 +6026,9 @@ window.onerror = function(msg, src, line, col, err) {
       var [tab, setTab] = useState("turnos");
       var [saved, setSaved] = useState(false);
       var [tareas, setTareas] = useState(function(){return config.tareas || TAREAS_BASE;});
+      // Mantener el estado local de tareas sincronizado con Firebase: si config.tareas cambia
+      // (guardado propio o desde otro dispositivo), se refleja aquí y no se pisa con datos viejos.
+      useEffect(function(){ setTareas(config.tareas || TAREAS_BASE); }, [config.tareas]);
       var [newTarea, setNewTarea] = useState({code:"",nombre:"",roles:[]});
       var [metricas2, setMetricas2] = useState(function(){return config.metricas || METRICAS_BASE;});
       var [newMet, setNewMet] = useState({code:"",nombre:""});
