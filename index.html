@@ -4498,8 +4498,12 @@ window.onerror = function(msg, src, line, col, err) {
                           var tareasUnificadas = tareasBase.concat(tareasAgregadas.filter(function(ta){
                             return !tareasBase.find(function(tb){return tb.code===ta.code;});
                           }));
+                          // Disponibles para agregar = TODAS las del grupo que no estén activas ahora
+                          // (incluye tareas base que se hayan "quitado", para poder re-agregarlas).
+                          var codesActivosSet = {};
+                          tareasUnificadas.forEach(function(t){ if(confRol.remove.indexOf(t.code)<0) codesActivosSet[t.code]=1; });
                           var tareasDisponibles = tareasGrupo.filter(function(t){
-                            return !tareasBase.find(function(b){return b.code===t.code;}) && confRol.add.indexOf(t.code)<0;
+                            return !codesActivosSet[t.code];
                           });
                           // Tareas activas: las unificadas menos las removidas
                           var tareasActivasRaw = tareasUnificadas.filter(function(t){return confRol.remove.indexOf(t.code)<0;});
