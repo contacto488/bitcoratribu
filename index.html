@@ -1692,6 +1692,13 @@ window.onerror = function(msg, src, line, col, err) {
                             {campoSufijo && <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{campoSufijo}</span>}
                           </div>
                         ) : null;
+                        // ── Nota/recordatorio fijo de la tarea (lo escribe el admin, el asesor siempre lo ve) ──
+                        var notaRender = (t.nota && String(t.nota).trim()) ? (
+                          <div style={{padding:"8px 12px",borderTop:"1px solid #dbeafe",background:"#eff6ff",display:"flex",alignItems:"flex-start",gap:7}}>
+                            <span style={{fontSize:13,lineHeight:1.3}}>📌</span>
+                            <span style={{fontSize:12,color:"#1e40af",fontWeight:600,whiteSpace:"pre-wrap",lineHeight:1.45}}>{t.nota}</span>
+                          </div>
+                        ) : null;
                         // ── Tareas con sub-tareas (checklist) ──
                         var subsDef = getSubtareas(t);
                         if (subsDef && subsDef.length > 0) {
@@ -1787,6 +1794,7 @@ window.onerror = function(msg, src, line, col, err) {
                                   </div>
                                 </div>
                               )}
+                              {notaRender}
                               {campoValorRender}
                             </div>
                           );
@@ -1819,6 +1827,7 @@ window.onerror = function(msg, src, line, col, err) {
                                 })}
                               </div>
                             </div>
+                            {notaRender}
                             {campoValorRender}
                           </div>
                         );
@@ -3699,6 +3708,7 @@ window.onerror = function(msg, src, line, col, err) {
       // Estados para gestión de sub-tareas (qué tarea está expandida y texto del nuevo paso)
       var [subTareaExpandida, setSubTareaExpandida] = useState(null);
       var [campoExpandido, setCampoExpandido] = useState(null); // qué tarea tiene abierto el panel "Campo de valor"
+      var [notaExpandida, setNotaExpandida] = useState(null); // qué tarea tiene abierto el panel "Nota/recordatorio"
       var [nuevoSubPaso, setNuevoSubPaso] = useState("");
       var [confirmarEliminarSub, setConfirmarEliminarSub] = useState(null); // {code, itemId}
       var [editandoSub, setEditandoSub] = useState(null); // {code, itemId}
@@ -3768,6 +3778,16 @@ window.onerror = function(msg, src, line, col, err) {
         });
         setListaTareas(nuevaLista);
         if (onCambiarConfig) onCambiarConfig(Object.assign({},cfg,{tareas:nuevaLista}));
+      }
+      // Escribe/borra la nota (recordatorio/comentario) fija de una tarea (se guarda solo)
+      function actualizarNotaTarea(code, texto) {
+        var nuevaLista = listaTareas.map(function(x){
+          if (x.code !== code) return x;
+          var c = Object.assign({}, x);
+          if (texto && texto.trim()) c.nota = texto; else delete c.nota;
+          return c;
+        });
+        guardarTareas(nuevaLista);
       }
 
       function agregarNuevaTarea() {
@@ -4073,6 +4093,10 @@ window.onerror = function(msg, src, line, col, err) {
                                 style={{padding:"4px 10px", borderRadius:7, border:"1.5px solid "+(t.campoValor?"#fbcfe8":"#e2e8f0"), background:campoExpandido===t.code?"#fdf2f8":"#fff", color:t.campoValor?"#be185d":"#64748b", fontWeight:700, fontSize:11, cursor:"pointer"}}>
                                 📝 Campo{t.campoValor?" ✓":""}
                               </button>
+                              <button onClick={function(){ setNotaExpandida(notaExpandida===t.code?null:t.code); }}
+                                style={{padding:"4px 10px", borderRadius:7, border:"1.5px solid "+(t.nota?"#bfdbfe":"#e2e8f0"), background:notaExpandida===t.code?"#eff6ff":"#fff", color:t.nota?"#1d4ed8":"#64748b", fontWeight:700, fontSize:11, cursor:"pointer"}}>
+                                💬 Nota{t.nota?" ✓":""}
+                              </button>
                               <button onClick={function() { empezarEdicion(t); }}
                                 style={{padding:"4px 10px", borderRadius:7, border:"1.5px solid #e2e8f0", background:"#fff", color:"#64748b", fontWeight:700, fontSize:11, cursor:"pointer"}}>✏ Editar</button>
                               <button onClick={function() { setConfirmarEliminar(t.code); setEditandoCode(null); }}
@@ -4122,6 +4146,18 @@ window.onerror = function(msg, src, line, col, err) {
                           </div>
                         );
                       })()}
+                      {notaExpandida === t.code && (
+                        <div style={{padding:"10px 14px 12px", borderTop:"1px solid #e2e8f0", background:"#eff6ff"}}>
+                          <div style={{fontSize:11, color:"#64748b", marginBottom:8, lineHeight:1.4}}>
+                            Escribe un <b>recordatorio o comentario fijo</b> para esta tarea. Los asesores lo verán siempre en su bitácora (📌).
+                          </div>
+                          <textarea value={t.nota||""} placeholder="Ej: Recuerda adjuntar el soporte del pago antes de marcar."
+                            onChange={function(e){ actualizarNotaTarea(t.code, e.target.value); }} rows={3}
+                            style={{width:"100%",boxSizing:"border-box",padding:"8px 10px",borderRadius:9,border:"1.5px solid #bfdbfe",fontSize:12,color:"#1e293b",background:"#fff",outline:"none",fontFamily:"inherit",resize:"vertical",lineHeight:1.4}}/>
+                          {t.nota && <button onClick={function(){ actualizarNotaTarea(t.code, ""); }}
+                            style={{marginTop:8,padding:"5px 12px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Quitar nota</button>}
+                        </div>
+                      )}
                       {subAbierto && (
                         <div style={{padding:"10px 14px 12px", borderTop:"1px solid #e2e8f0", background:"#fff"}}>
                           <div style={{fontSize:11, color:"#64748b", marginBottom:8, lineHeight:1.4}}>
