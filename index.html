@@ -1758,7 +1758,8 @@ window.onerror = function(msg, src, line, col, err) {
                                     var h12n=(parseInt((t.hora||"0").split(":")[0],10)%12)||12; var art=h12n===1?"a la":"a las";
                                     var hecha = todasHechas;
                                     var color = hecha?"#16a34a":vencidaSub?"#b91c1c":"#b45309";
-                                    var txt = hecha ? ("Hecha · era "+art+" "+formatHora12(t.hora)) : ("Debe estar realizada "+art+" "+formatHora12(t.hora)+(vencidaSub?" · ¡pendiente!":""));
+                                    var baseMsg = t.horaTexto ? t.horaTexto : ("Debe estar realizada "+art+" "+formatHora12(t.hora));
+                                    var txt = hecha ? ("Hecha · era "+art+" "+formatHora12(t.hora)) : (baseMsg+(vencidaSub?" · ¡pendiente!":""));
                                     return <div style={{fontSize:11,fontWeight:700,color:color,marginTop:3,display:"flex",alignItems:"center",gap:4}}><span>{hecha?"✓":"⏰"}</span><span>{txt}</span></div>;
                                   })()}
                                 </div>
@@ -1813,7 +1814,8 @@ window.onerror = function(msg, src, line, col, err) {
                                   var h12n=(parseInt((t.hora||"0").split(":")[0],10)%12)||12; var art=h12n===1?"a la":"a las";
                                   var hecha = v==="Si";
                                   var color = hecha?"#16a34a":vencidaS?"#b91c1c":"#b45309";
-                                  var txt = hecha ? ("Hecha · era "+art+" "+formatHora12(t.hora)) : ("Debe estar realizada "+art+" "+formatHora12(t.hora)+(vencidaS?" · ¡pendiente!":""));
+                                  var baseMsg = t.horaTexto ? t.horaTexto : ("Debe estar realizada "+art+" "+formatHora12(t.hora));
+                                  var txt = hecha ? ("Hecha · era "+art+" "+formatHora12(t.hora)) : (baseMsg+(vencidaS?" · ¡pendiente!":""));
                                   return <div style={{fontSize:11,fontWeight:700,color:color,marginTop:3,display:"flex",alignItems:"center",gap:4}}><span>{hecha?"✓":"⏰"}</span><span>{txt}</span></div>;
                                 })()}
                               </div>
@@ -4069,6 +4071,11 @@ window.onerror = function(msg, src, line, col, err) {
                               var nuevaLista = listaTareas.map(function(x){ if(x.code!==t.code) return x; var c=Object.assign({},x); delete c.hora; return c; });
                               guardarTareas(nuevaLista);
                             }} title="Quitar la hora (desprogramar)" style={{padding:"2px 6px",borderRadius:6,border:"1.5px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:10,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✕</button>}
+                            {t.hora && <input type="text" value={t.horaTexto||""} onChange={function(e){
+                              var val=e.target.value;
+                              var nuevaLista = listaTareas.map(function(x){ if(x.code!==t.code) return x; var c=Object.assign({},x); if(val) c.horaTexto=val; else delete c.horaTexto; return c; });
+                              guardarTareas(nuevaLista);
+                            }} placeholder="Texto del recordatorio (opcional)" title="Texto personalizado que aparece en el recordatorio. Si lo dejas vacío, se usa 'Debe estar realizada a las …'" style={{padding:"3px 7px",borderRadius:6,border:"1.5px solid #fcd34d",fontSize:11,color:"#1e293b",background:"#fffbeb",fontFamily:"inherit",width:180,maxWidth:"55%"}}/>}
                           </div>
                         )}
                         <div style={{display:"flex", gap:4}}>
@@ -5850,6 +5857,105 @@ window.onerror = function(msg, src, line, col, err) {
     // ═══════════════════════════════════════════════════
     // INFORMES / DATOS (export CSV, rendimiento, tendencia, rachas, respaldo)
     // ═══════════════════════════════════════════════════
+    function ControlArqueosTab(props) {
+      var entries = props.entries || {};
+      var config = props.config || {};
+      var base = Number(config.baseCaja) || 501500;
+      var [desde, setDesde] = useState("");
+      function fmt(n){ return (n===null||n===undefined||n==="")?"—":"$"+Number(n).toLocaleString("es-CO"); }
+      function setBase(v){ if(props.onConfigChange) props.onConfigChange(Object.assign({},config,{baseCaja:Number(v)||0})); }
+      var porFecha = {};
+      Object.keys(entries).forEach(function(k){
+        var p=k.split("__"); var persona=p[0], fecha=p[1]; if(!fecha) return;
+        var met=(entries[k] && entries[k].metricas) || {};
+        var rec=met["arqueo_A006"], ent=met["arqueo_A013"], rc=met["arqueo_A033"];
+        if(!porFecha[fecha]) porFecha[fecha]={};
+        if(rec!=null && rec!==""){ porFecha[fecha].recibido=Number(rec); porFecha[fecha].qRec=persona; }
+        if(ent!=null && ent!==""){ porFecha[fecha].entregado=Number(ent); porFecha[fecha].qEnt=persona; }
+        if(rc!=null && rc!==""){ porFecha[fecha].recaudo=Number(rc); }
+      });
+      var fechas=Object.keys(porFecha).sort();
+      var filas=[];
+      for(var i=0;i<fechas.length;i++){
+        var d=fechas[i]; var pf=porFecha[d];
+        if(pf.recibido===undefined && pf.recaudo===undefined && pf.entregado===undefined) continue;
+        var prevEnt=null;
+        for(var j=i-1;j>=0;j--){ if(porFecha[fechas[j]].entregado!==undefined){ prevEnt=porFecha[fechas[j]].entregado; break; } }
+        var contDif = (pf.recibido!==undefined && prevEnt!==null) ? (pf.recibido - prevEnt) : null;
+        var quedo = (pf.recibido!==undefined && pf.recaudo!==undefined) ? (pf.recibido - pf.recaudo) : null;
+        var difQuedo = (quedo!==null) ? (quedo - base) : null;
+        filas.push({fecha:d, recibido:pf.recibido, qRec:pf.qRec, prevEnt:prevEnt, contDif:contDif, recaudo:pf.recaudo, quedo:quedo, difQuedo:difQuedo});
+      }
+      if(desde){ filas = filas.filter(function(f){ return f.fecha >= desde; }); }
+      filas.reverse();
+      var descuadres = filas.filter(function(f){ return (f.contDif!==null&&f.contDif!==0) || (f.difQuedo!==null&&f.difQuedo!==0); }).length;
+      var inp={padding:"7px 10px",borderRadius:9,border:"1.5px solid #e2e8f0",fontSize:14,fontWeight:700,color:"#1e293b",fontFamily:"inherit"};
+      function Linea(pp){
+        return (
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"5px 0"}}>
+            <span style={{fontSize:13,color:pp.fuerte?"#1e293b":"#64748b",fontWeight:pp.fuerte?800:600}}>{pp.label}</span>
+            <span style={{fontSize:pp.fuerte?17:15,fontWeight:pp.fuerte?900:700,color:pp.color||"#1e293b"}}>{pp.valor}</span>
+          </div>
+        );
+      }
+      return (
+        <div>
+          <p style={{fontSize:13,color:"#64748b",marginTop:0,marginBottom:12,lineHeight:1.5}}>Cada día: lo que se <b>recibió</b> al abrir, menos lo que se <b>envió</b> a contabilidad, es lo que <b>quedó</b> en caja — que debe ser igual a la <b>base</b>.</p>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"12px 14px"}}>
+            <span style={{fontSize:13,fontWeight:700,color:"#475569"}}>Base de caja:</span>
+            <input type="number" value={config.baseCaja!==undefined?config.baseCaja:501500} onChange={function(e){setBase(e.target.value);}} style={Object.assign({width:130},inp)}/>
+            <span style={{fontSize:12,color:"#94a3b8"}}>COP</span>
+            <span style={{width:1,height:24,background:"#e2e8f0",margin:"0 4px"}}></span>
+            <span style={{fontSize:13,fontWeight:700,color:"#475569"}}>Mostrar desde:</span>
+            <input type="date" value={desde} onChange={function(e){setDesde(e.target.value);}} style={Object.assign({},inp,{fontWeight:600,fontSize:13})}/>
+            {desde && <button onClick={function(){setDesde("");}} style={{padding:"6px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Ver todo</button>}
+            <span style={{marginLeft:"auto",display:"inline-block",background:descuadres>0?"#fef2f2":"#f0fdf4",border:"1px solid "+(descuadres>0?"#fecaca":"#bbf7d0"),color:descuadres>0?"#b91c1c":"#15803d",borderRadius:9,padding:"7px 14px",fontWeight:800,fontSize:13}}>
+              {descuadres>0 ? ("⚠ "+descuadres+" por revisar") : "✓ Todo cuadra"}
+            </span>
+          </div>
+          {filas.length===0
+            ? <p style={{color:"#94a3b8",fontSize:13}}>No hay arqueos en el rango seleccionado.</p>
+            : (
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {filas.map(function(f,idx){
+                  var malCont = f.contDif!==null && f.contDif!==0;
+                  var malQuedo = f.difQuedo!==null && f.difQuedo!==0;
+                  var hayMal = malCont||malQuedo;
+                  var faltaRecaudo = f.recaudo===undefined;
+                  var resultColor = f.difQuedo===null?"#94a3b8":(f.difQuedo===0?"#15803d":"#b91c1c");
+                  var resultTxt = f.difQuedo===null ? "— falta registrar el recaudo"
+                    : (f.difQuedo===0 ? "✓ Caja cuadra con la base"
+                    : (f.difQuedo>0 ? "⚠ Sobró "+fmt(f.difQuedo)+" en caja" : "⚠ Faltó "+fmt(Math.abs(f.difQuedo))+" en caja"));
+                  return (
+                    <div key={idx} style={{border:"1.5px solid "+(hayMal?"#fecaca":"#e2e8f0"),background:"#fff",borderRadius:14,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #f1f5f9"}}>
+                        <span style={{fontSize:15,fontWeight:800,color:"#1e293b"}}>{f.fecha}</span>
+                        <span style={{fontSize:12,color:"#94a3b8"}}>{f.qRec||""}</span>
+                        <span style={{marginLeft:"auto",fontSize:12,fontWeight:800,color:hayMal?"#b91c1c":"#15803d"}}>{hayMal?"⚠ Revisar":"✓ OK"}</span>
+                      </div>
+                      <Linea label="Recibió al abrir" valor={fmt(f.recibido)}/>
+                      {f.prevEnt!==null && (
+                        <div style={{fontSize:11,marginTop:-2,marginBottom:2,color:malCont?"#b91c1c":"#15803d",fontWeight:600}}>
+                          {malCont ? ("⚠ No coincide con lo entregado anoche ("+fmt(f.prevEnt)+")") : ("✓ Coincide con lo entregado anoche")}
+                        </div>
+                      )}
+                      <Linea label="Enviado a contabilidad" valor={"− "+fmt(f.recaudo)} color="#b45309"/>
+                      <div style={{borderTop:"1px dashed #cbd5e1",margin:"4px 0"}}></div>
+                      <Linea label="Quedó en caja" valor={"= "+fmt(f.quedo)} fuerte={true}/>
+                      <Linea label="Debe quedar (base)" valor={fmt(base)}/>
+                      <div style={{marginTop:8,background:f.difQuedo===0?"#f0fdf4":(faltaRecaudo?"#f8fafc":"#fef2f2"),borderRadius:9,padding:"9px 12px",textAlign:"center",fontSize:15,fontWeight:900,color:resultColor}}>
+                        {resultTxt}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          <p style={{fontSize:11,color:"#94a3b8",marginTop:14,lineHeight:1.4}}>Como el control es nuevo, los días viejos (datos de prueba) saldrán como descuadre — usa "Mostrar desde" con la fecha en que empezaron a hacerlo bien. "Coincide con lo entregado anoche" salta domingos/festivos. Corrige valores en el Detalle de cada asesor.</p>
+        </div>
+      );
+    }
+
     function InformesTab(props) {
       var config = props.config;
       var entries = props.entries || {};
@@ -6149,6 +6255,7 @@ window.onerror = function(msg, src, line, col, err) {
               {tabBtn("roles","Roles")}
               {tabBtn("horarios","Horarios")}
               {tabBtn("informes","📊 Informes")}
+              {tabBtn("arqueos","🧾 Arqueos")}
             </div>
             <div style={{padding:24}}>
               {tab === "turnos" && <TurnosTab overrides={overrides} setOverrides={setOverrides} onSave={saveTurnos} saved={saved} asesoras={asesoras} config={config}/>}
@@ -6263,6 +6370,7 @@ window.onerror = function(msg, src, line, col, err) {
               {tab === "roles" && <RolesTab config={config} onSave={function(r){onConfigChange(Object.assign({},config,{customRoles:r}));flash();}} saved={saved}/>}
               {tab === "horarios" && <HorariosTab config={config} onConfigChange={onConfigChange} flash={flash} saved={saved} asesoras={asesoras}/>}
               {tab === "informes" && <InformesTab config={config} entries={entries} onConfigChange={onConfigChange}/>}
+              {tab === "arqueos" && <ControlArqueosTab config={config} entries={entries} onConfigChange={onConfigChange}/>}
             </div>
           </div>
         </div>
